@@ -5,7 +5,22 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Version>0.1.0</Version>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>msd</ToolCommandName>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>zizani</Authors>
+    <PackageTags>msl;cli</PackageTags>
+    <PackageProjectUrl>https://github.com/ModShardTeam/ModShardDiff</PackageProjectUrl>
+    <Description>A cli tool to export all differences between two .win files.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+      <None Include="README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.7.0"/>
@@ -30,4 +45,19 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\"/>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/ModShardTeam/ModShardDiff</RepositoryUrl>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ProjectUrl>https://github.com/ModShardTeam/ModShardDiff</ProjectUrl>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
 </Project>

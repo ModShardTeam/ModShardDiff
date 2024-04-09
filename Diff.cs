@@ -1,13 +1,17 @@
 using Serilog;
 using UndertaleModLib;
 using UndertaleModLib.Models;
+using DiffMatchPatch;
+using UndertaleModLib.Decompiler;
+using System.Runtime;
+using UndertaleModLib.Util;
 
 namespace ModShardDiff;
 internal static class MainOperations
 {
     public static async Task MainCommand(string name, string reference, string? outputFolder)
     {
-        outputFolder ??= Environment.CurrentDirectory;
+        outputFolder ??= Path.Join(Environment.CurrentDirectory, Path.DirectorySeparatorChar.ToString(), "results");
 
         LoggerConfiguration logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -21,14 +25,71 @@ internal static class MainOperations
         await task;
         if (task.Result)
         {
-            Console.WriteLine($"Differences in {outputFolder}");
+            Console.WriteLine($"Process failed successfully.");
         }
         else
         {
-            Console.WriteLine("Failed exporting differences");
+            Console.WriteLine("Failed exporting differences.");
         }
 
         await Log.CloseAndFlushAsync();
+    }
+}
+
+class UndertaleCodeNameComparer : IEqualityComparer<UndertaleCode>
+{
+    public bool Equals(UndertaleCode? x, UndertaleCode? y)
+    {
+        if (x == null || y == null) return false;
+        return x.Name.Content == y.Name.Content;
+    }
+
+    // If Equals() returns true for a pair of objects
+    // then GetHashCode() must return the same value for these objects.
+
+    public int GetHashCode(UndertaleCode x)
+    {
+        //Check whether the object is null
+        if (x == null) return 0;
+        return x.Name.Content.GetHashCode();
+    }
+}
+
+class UndertaleSpriteNameComparer : IEqualityComparer<UndertaleSprite>
+{
+    public bool Equals(UndertaleSprite? x, UndertaleSprite? y)
+    {
+        if (x == null || y == null) return false;
+        return x.Name.Content == y.Name.Content;
+    }
+
+    // If Equals() returns true for a pair of objects
+    // then GetHashCode() must return the same value for these objects.
+
+    public int GetHashCode(UndertaleSprite x)
+    {
+        //Check whether the object is null
+        if (x == null) return 0;
+        return x.Name.Content.GetHashCode();
+    }
+}
+
+class UnderTaleInstructionComparer : IEqualityComparer<UndertaleInstruction>
+{
+    public bool Equals(UndertaleInstruction? x, UndertaleInstruction? y)
+    {
+        if (x == null || y == null) return false;
+        return x.Address == y.Address && x.Kind == y.Kind && x.Type1 == y.Type1 && x.Type2 == y.Type2 && x.TypeInst == y.TypeInst && x.ComparisonKind == y.ComparisonKind;
+    }
+
+    // If Equals() returns true for a pair of objects
+    // then GetHashCode() must return the same value for these objects.
+
+    public int GetHashCode(UndertaleInstruction x)
+    {
+        //Check whether the object is null
+        if (x == null) return 0;
+        return x.Address.GetHashCode() ^ x.Kind.GetHashCode() ^ x.Type1.GetHashCode() ^ x.Type2.GetHashCode() ^ x.TypeInst.GetHashCode() ^ x.ComparisonKind.GetHashCode();
     }
 }
 
@@ -41,9 +102,73 @@ internal static class FileReader
     }
     private static void DiffCodes(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
-        IEnumerable<string> added = name.Code.Select(x => x.Name.Content).Except(reference.Code.Select(x => x.Name.Content));
-        IEnumerable<string> removed = reference.Code.Select(x => x.Name.Content).Except(name.Code.Select(x => x.Name.Content));
-        ExportDiffs(added, removed, "Codes", outputFolder);
+        GlobalDecompileContext contextName = new(name, false);
+        GlobalDecompileContext contextRef = new(reference, false);
+        DirectoryInfo dirAddedCode = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "AddedCodes"));
+        dirAddedCode.Create();
+        DirectoryInfo dirModifiedCode = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "ModifiedCodes"));
+        dirModifiedCode.Create();
+
+        IEnumerable<UndertaleCode> added = name.Code.Except(reference.Code, new UndertaleCodeNameComparer());
+        IEnumerable<UndertaleCode> removed = reference.Code.Except(name.Code, new UndertaleCodeNameComparer());
+
+        using (StreamWriter sw = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"addedCodes.txt")))
+        {
+            foreach(UndertaleCode code in added)
+            {
+                sw.WriteLine(code.Name.Content);
+                string strCode = "";
+                try
+                {
+                    strCode = Decompiler.Decompile(code, contextName);
+                    File.WriteAllText(Path.Join(dirAddedCode.FullName, Path.DirectorySeparatorChar.ToString(), $"{code.Name.Content}.gml"), strCode);
+                }
+                catch
+                { 
+                    // pass if failed
+                }
+            }
+        }
+        File.WriteAllLines(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"removedCodes.txt"), removed.Select(x => x.Name.Content));
+
+        IEnumerable<UndertaleCode> common = name.Code.Intersect(reference.Code, new UndertaleCodeNameComparer());
+        diff_match_patch dmp = new();
+
+        foreach(UndertaleCode code in common)
+        {
+            UndertaleCode codeRef = reference.Code.First(t => t.Name.Content == code.Name.Content);
+            if (codeRef.Length == code.Length && codeRef.Instructions.SequenceEqual(code.Instructions, new UnderTaleInstructionComparer())) continue;
+            Console.WriteLine($"{code.Name.Content} modified.");
+
+            string strName = "";
+            string strRef = "";
+            try
+            {
+                strName = Decompiler.Decompile(code, contextName);
+                strRef = Decompiler.Decompile(codeRef, contextRef);
+            }
+            catch(Exception ex)
+            {
+                if (!ex.Message.Contains("This code block represents a function nested inside"))
+                {
+                    try
+                    {
+                        strName = code.Disassemble(name.Variables, name.CodeLocals.For(code));
+                        strRef = codeRef.Disassemble(reference.Variables, reference.CodeLocals.For(codeRef));
+                    }
+                    catch (Exception ex2)
+                    {
+                        Console.WriteLine($@"{ex2.GetType()}: {ex2.Message}");
+                    }
+                }
+            }
+            List<Diff> diff = dmp.diff_main(strRef, strName);
+            if (diff.Count <= 1) continue;
+
+            string report = dmp.diff_prettyHtml(diff);
+            File.WriteAllText(Path.Join(dirModifiedCode.FullName, Path.DirectorySeparatorChar.ToString(), $"{code.Name.Content}.html"), report);
+        }
+        
     }
     private static void DiffObjects(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
@@ -65,9 +190,45 @@ internal static class FileReader
     }
     private static void DiffSprites(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
-        IEnumerable<string> added = name.Sprites.Select(x => x.Name.Content).Except(reference.Sprites.Select(x => x.Name.Content));
-        IEnumerable<string> removed = reference.Sprites.Select(x => x.Name.Content).Except(name.Sprites.Select(x => x.Name.Content));
-        ExportDiffs(added, removed, "Sprites", outputFolder);
+        TextureWorker worker = new();
+        DirectoryInfo dirAddedSprite = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "AddedSprites"));
+        dirAddedSprite.Create(); 
+        DirectoryInfo dirModifiedSprite = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "ModifiedSprites"));
+        dirModifiedSprite.Create();
+
+        IEnumerable<UndertaleSprite> added = name.Sprites.Except(reference.Sprites, new UndertaleSpriteNameComparer());
+        IEnumerable<UndertaleSprite> removed = reference.Sprites.Except(name.Sprites, new UndertaleSpriteNameComparer());
+        using (StreamWriter sw = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"addedSprites.txt")))
+        {
+            foreach(UndertaleSprite sprite in added)
+            {
+                sw.WriteLine(sprite.Name.Content);
+                for (int i = 0; i < sprite.Textures.Count; i++)
+                {
+                    if (sprite.Textures[i]?.Texture is not null)
+                    {
+                        worker.ExportAsPNG(sprite.Textures[i].Texture, Path.Combine(dirAddedSprite.FullName , sprite.Name.Content + "_" + i + ".png"), null, true);
+                    }
+                }
+            }
+        }
+        File.WriteAllLines(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"removedSprites.txt"), removed.Select(x => x.Name.Content));
+
+        IEnumerable<UndertaleSprite> common = name.Sprites.Intersect(reference.Sprites, new UndertaleSpriteNameComparer());
+        bool equalTexture = true;
+        foreach(UndertaleSprite sprite in common)
+        {
+            UndertaleSprite spriteRef = reference.Sprites.First(t => t.Name.Content == sprite.Name.Content);
+            for (int i = 0; i < sprite.Textures.Count; i++)
+            {
+                if (sprite.Textures[i]?.Texture is not null)
+                {
+                    equalTexture = sprite.Textures[i].Texture.TexturePage.TextureData.TextureBlob.SequenceEqual(spriteRef.Textures[i].Texture.TexturePage.TextureData.TextureBlob);
+                    if(equalTexture) continue;
+                    worker.ExportAsPNG(sprite.Textures[i].Texture, Path.Combine(dirModifiedSprite.FullName , sprite.Name.Content + "_" + i + ".png"), null, true);
+                }
+            }
+        }
     }
     private static void DiffTexturePageItems(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
@@ -77,7 +238,7 @@ internal static class FileReader
     }
     public static async Task<bool> Diff(string name, string reference, string outputFolder)
     {
-        DirectoryInfo dir = new(Path.Join(outputFolder, Path.DirectorySeparatorChar.ToString(), "results"));
+        DirectoryInfo dir = new(outputFolder);
         if (dir.Exists) dir.Delete(true);
         dir.Create();
 
@@ -102,14 +263,7 @@ internal static class FileReader
         UndertaleData? data = null;
         using (FileStream stream = new(filename, FileMode.Open, FileAccess.Read))
         {
-            data = UndertaleIO.Read(
-                stream, 
-                warning =>
-                {
-                    if (warning.Contains("unserializeCountError.txt") || warning.Contains("object pool size"))
-                        return;
-                }
-            );
+            data = UndertaleIO.Read(stream);
         }
 
         UndertaleEmbeddedTexture.TexData.ClearSharedStream();

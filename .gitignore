@@ -8,5 +8,6 @@ obj
 bin
 nupkg
 logs
+results
 *.sml
 *.win

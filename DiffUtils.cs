@@ -1,11 +1,10 @@
-using Serilog;
 using UndertaleModLib;
 using UndertaleModLib.Models;
 using DiffMatchPatch;
 using UndertaleModLib.Decompiler;
 using UndertaleModLib.Util;
-using System.Runtime.Serialization.Formatters.Binary;
 using Polenter.Serialization;
+using Newtonsoft.Json;
 
 namespace ModShardDiff;
 
@@ -45,6 +44,35 @@ class UndertaleSpriteNameComparer : IEqualityComparer<UndertaleSprite>
         return x.Name.Content.GetHashCode();
     }
 }
+class UndertaleGameObjectComparer : IEqualityComparer<UndertaleGameObject>
+{
+    public bool Equals(UndertaleGameObject? x, UndertaleGameObject? y)
+    {
+        if (x == null || y == null) return false;
+        return x.Name.Content == y.Name.Content;
+    }
+
+    // If Equals() returns true for a pair of objects
+    // then GetHashCode() must return the same value for these objects.
+
+    public int GetHashCode(UndertaleGameObject x)
+    {
+        //Check whether the object is null
+        if (x == null) return 0;
+        return x.Name.Content.GetHashCode();
+    }
+}
+public class GameObjectSummary
+{
+    public string name = "";
+    public string spriteName = "";
+    public string parentName = "";
+    public bool isVisible;
+    public bool isPersistent;
+    public bool isAwake;
+    public string collisionShapeFlags = "";
+}
+
 static public class DiffUtils
 {
     // thanks to Pong to acknowledge me that possibility
@@ -75,7 +103,7 @@ static public class DiffUtils
             return true;
         }
     }
-    private static bool CompareUndertaleCode(MemoryStream ms, SharpSerializer burstSerializer, UndertaleCode codeRef, UndertaleCode code)
+    private static bool CompareUndertaleCode(MemoryStream ms, SharpSerializer burstSerializer, UndertaleCode code, UndertaleCode codeRef)
     {
         ms.SetLength(0);
         burstSerializer.Serialize(code, ms);
@@ -173,11 +201,39 @@ static public class DiffUtils
         AddedRemovedCodes(name, reference, outputFolder);
         ModifiedCodes(name, reference, outputFolder);
     }
+    private static void AddedRemovedObjects(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
+    {
+        DirectoryInfo dirAddedObject = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "AddedGameObjects"));
+        dirAddedObject.Create();
+
+        IEnumerable<UndertaleGameObject> added = name.GameObjects.Except(reference.GameObjects, new UndertaleGameObjectComparer());
+        IEnumerable<UndertaleGameObject> removed = reference.GameObjects.Except(name.GameObjects, new UndertaleGameObjectComparer());
+        using (StreamWriter sw = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"addedGameObjects.txt")))
+        {
+            foreach(UndertaleGameObject ob in added)
+            {
+                sw.WriteLine(ob.Name.Content);
+                File.WriteAllText(Path.Join(dirAddedObject.FullName, Path.DirectorySeparatorChar.ToString(), $"{ob.Name.Content}.json"), 
+                    JsonConvert.SerializeObject(
+                        new GameObjectSummary()
+                        {
+                            name = ob.Name.Content,
+                            spriteName = ob.Sprite?.Name.Content ?? "",
+                            parentName = ob.ParentId?.Name.Content ?? "",
+                            isVisible = ob.Visible,
+                            isPersistent = ob.Persistent,
+                            isAwake = ob.Awake,
+                            collisionShapeFlags = ob.CollisionShape.ToString(),
+                        }
+                    )
+                );
+            }
+        }
+        File.WriteAllLines(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"removedGameObjects.txt"), removed.Select(x => x.Name.Content));
+    }
     public static void DiffObjects(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
-        IEnumerable<string> added = name.GameObjects.Select(x => x.Name.Content).Except(reference.GameObjects.Select(x => x.Name.Content));
-        IEnumerable<string> removed = reference.GameObjects.Select(x => x.Name.Content).Except(name.GameObjects.Select(x => x.Name.Content));
-        ExportDiffs(added, removed, "GameObjects", outputFolder);
+        AddedRemovedObjects(name, reference, outputFolder);
     }
     public static void DiffRooms(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {

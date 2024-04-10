@@ -18,19 +18,24 @@
     <Description>A cli tool to export all differences between two .win files.</Description>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
   <ItemGroup>
-      <None Include="README.md" Pack="true" PackagePath=""/>
+      <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.7.0"/>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.7.0"/>
-    <PackageReference Include="CommandLineParser" Version="2.8.0"/>
-    <PackageReference Include="Serilog" Version="3.1.1"/>
-    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1"/>
-    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0"/>
-    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1"/>
-    <PackageReference Include="System.Drawing.Common" Version="8.0.1"/>
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.7.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.7.0" />
+    <PackageReference Include="CommandLineParser" Version="2.8.0" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="SharpSerializer" Version="4.0.2" />
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,7 +51,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="icon.png" Pack="true" PackagePath="\"/>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <PropertyGroup>

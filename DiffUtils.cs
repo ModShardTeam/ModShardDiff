@@ -49,6 +49,38 @@ class UndertaleGameObjectComparer : IEqualityComparer<UndertaleGameObject>
     public bool Equals(UndertaleGameObject? x, UndertaleGameObject? y)
     {
         if (x == null || y == null) return false;
+        return x.Name.Content == y.Name.Content && 
+            (x.Sprite?.Name.Content ?? "") == (y.Sprite?.Name.Content ?? "") &&
+            (x.ParentId?.Name.Content ?? "") == (y.ParentId?.Name.Content ?? "") &&
+            x.Visible == y.Visible &&
+            x.Persistent == y.Persistent &&
+            x.Awake == y.Awake &&
+            x.CollisionShape == y.CollisionShape && 
+            x.Events.Count == y.Events.Count;
+    }
+
+    // If Equals() returns true for a pair of objects
+    // then GetHashCode() must return the same value for these objects.
+
+    public int GetHashCode(UndertaleGameObject x)
+    {
+        //Check whether the object is null
+        if (x == null) return 0;
+        return x.Name.Content.GetHashCode() ^ 
+            (x.Sprite?.Name.Content ?? "").GetHashCode() ^ 
+            (x.ParentId?.Name.Content ?? "").GetHashCode() ^
+            x.Visible.GetHashCode() ^
+            x.Persistent.GetHashCode() ^
+            x.Awake.GetHashCode() ^
+            x.CollisionShape.GetHashCode() ^
+            x.Events.Count.GetHashCode();
+    }
+}
+class UndertaleGameObjectNameComparer : IEqualityComparer<UndertaleGameObject>
+{
+    public bool Equals(UndertaleGameObject? x, UndertaleGameObject? y)
+    {
+        if (x == null || y == null) return false;
         return x.Name.Content == y.Name.Content;
     }
 
@@ -64,17 +96,25 @@ class UndertaleGameObjectComparer : IEqualityComparer<UndertaleGameObject>
 }
 public class GameObjectSummary
 {
-    public string name = "";
-    public string spriteName = "";
-    public string parentName = "";
-    public bool isVisible;
-    public bool isPersistent;
-    public bool isAwake;
-    public string collisionShapeFlags = "";
+    public string name {get; set;} = "";
+    public string spriteName {get; set;} = "";
+    public string parentName {get; set;} = "";
+    public bool isVisible {get; set;}
+    public bool isPersistent {get; set;}
+    public bool isAwake {get; set;}
+    public string collisionShapeFlags {get; set;} = "";
+    public List<(string, int)> Events {get; set;} = new List<(string, int)>();
 }
 
 static public class DiffUtils
 {
+    public static IEnumerable<(int, T)> Enumerate<T>(this IEnumerable<T> ienumerable) 
+    {
+        int ind = 0;
+        foreach(T element in ienumerable) {
+            yield return (ind++, element);
+        }
+    }
     // thanks to Pong to acknowledge me that possibility
     private static unsafe bool UnsafeCompare(byte[] a1, byte[] a2)
     {
@@ -150,8 +190,7 @@ static public class DiffUtils
     private static void ModifiedCodes(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
         using MemoryStream ms = new();
-        SharpSerializerBinarySettings settings = new(BinarySerializationMode.Burst);
-        SharpSerializer burstSerializer = new(settings);
+        SharpSerializer burstSerializer = new(new SharpSerializerBinarySettings(BinarySerializationMode.Burst));
 
         GlobalDecompileContext contextName = new(name, false);
         GlobalDecompileContext contextRef = new(reference, false);
@@ -206,34 +245,89 @@ static public class DiffUtils
         DirectoryInfo dirAddedObject = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "AddedGameObjects"));
         dirAddedObject.Create();
 
-        IEnumerable<UndertaleGameObject> added = name.GameObjects.Except(reference.GameObjects, new UndertaleGameObjectComparer());
-        IEnumerable<UndertaleGameObject> removed = reference.GameObjects.Except(name.GameObjects, new UndertaleGameObjectComparer());
+        IEnumerable<UndertaleGameObject> added = name.GameObjects.Except(reference.GameObjects, new UndertaleGameObjectNameComparer());
+        IEnumerable<UndertaleGameObject> removed = reference.GameObjects.Except(name.GameObjects, new UndertaleGameObjectNameComparer());
         using (StreamWriter sw = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"addedGameObjects.txt")))
         {
             foreach(UndertaleGameObject ob in added)
             {
                 sw.WriteLine(ob.Name.Content);
+                GameObjectSummary gameObjectSummary = new()
+                {
+                    name = ob.Name.Content,
+                    spriteName = ob.Sprite?.Name.Content ?? "",
+                    parentName = ob.ParentId?.Name.Content ?? "",
+                    isVisible = ob.Visible,
+                    isPersistent = ob.Persistent,
+                    isAwake = ob.Awake,
+                    collisionShapeFlags = ob.CollisionShape.ToString(),
+                    Events = ob.Events.Enumerate().SelectMany(x => x.Item2.Select(y => (((EventType)x.Item1).ToString(), (int)y.EventSubtype))).ToList(),
+                };
+
                 File.WriteAllText(Path.Join(dirAddedObject.FullName, Path.DirectorySeparatorChar.ToString(), $"{ob.Name.Content}.json"), 
-                    JsonConvert.SerializeObject(
-                        new GameObjectSummary()
-                        {
-                            name = ob.Name.Content,
-                            spriteName = ob.Sprite?.Name.Content ?? "",
-                            parentName = ob.ParentId?.Name.Content ?? "",
-                            isVisible = ob.Visible,
-                            isPersistent = ob.Persistent,
-                            isAwake = ob.Awake,
-                            collisionShapeFlags = ob.CollisionShape.ToString(),
-                        }
-                    )
+                    JsonConvert.SerializeObject(gameObjectSummary)
                 );
             }
         }
         File.WriteAllLines(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"removedGameObjects.txt"), removed.Select(x => x.Name.Content));
     }
+    private static void ModifiedObjects(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
+    {
+        diff_match_patch dmp = new();
+        UndertaleGameObjectComparer comparer = new();
+
+        DirectoryInfo dirModifiedObject = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), "ModifiedObjects"));
+        dirModifiedObject.Create();
+
+        UndertaleGameObject obRef;
+        string strName = "";
+        string strRef = "";
+
+        IEnumerable<UndertaleGameObject> common = name.GameObjects.Intersect(reference.GameObjects, new UndertaleGameObjectNameComparer());
+
+        foreach(UndertaleGameObject ob in common)
+        {
+            obRef = reference.GameObjects.First(t => t.Name.Content == ob.Name.Content);
+            if (comparer.Equals(ob, obRef)) continue;
+
+            strName = JsonConvert.SerializeObject(
+                new GameObjectSummary()
+                {
+                    name = ob.Name.Content,
+                    spriteName = ob.Sprite?.Name.Content ?? "",
+                    parentName = ob.ParentId?.Name.Content ?? "",
+                    isVisible = ob.Visible,
+                    isPersistent = ob.Persistent,
+                    isAwake = ob.Awake,
+                    collisionShapeFlags = ob.CollisionShape.ToString(),
+                    Events = ob.Events.Enumerate().SelectMany(x => x.Item2.Select(y => (((EventType)x.Item1).ToString(), (int)y.EventSubtype))).ToList(),
+                }
+            );
+            strRef = JsonConvert.SerializeObject(
+                new GameObjectSummary()
+                {
+                    name = obRef.Name.Content,
+                    spriteName = obRef.Sprite?.Name.Content ?? "",
+                    parentName = obRef.ParentId?.Name.Content ?? "",
+                    isVisible = obRef.Visible,
+                    isPersistent = obRef.Persistent,
+                    isAwake = obRef.Awake,
+                    collisionShapeFlags = obRef.CollisionShape.ToString(),
+                    Events = ob.Events.Enumerate().SelectMany(x => x.Item2.Select(y => (((EventType)x.Item1).ToString(), (int)y.EventSubtype))).ToList(),
+                }
+            );
+
+            List<Diff> diff = dmp.diff_main(strRef, strName);
+            if (diff.Count == 0 || (diff.Count == 1 && diff[0].operation == Operation.EQUAL)) continue;
+
+            string report = dmp.diff_prettyHtml(diff);
+            File.WriteAllText(Path.Join(dirModifiedObject.FullName, Path.DirectorySeparatorChar.ToString(), $"{ob.Name.Content}.html"), report);
+        }
+    }
     public static void DiffObjects(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {
         AddedRemovedObjects(name, reference, outputFolder);
+        ModifiedObjects(name, reference, outputFolder);
     }
     public static void DiffRooms(UndertaleData name, UndertaleData reference, DirectoryInfo outputFolder)
     {

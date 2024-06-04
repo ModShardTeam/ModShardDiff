@@ -56,7 +56,7 @@ class UndertaleGameObjectComparer : IEqualityComparer<UndertaleGameObject>
             x.Persistent == y.Persistent &&
             x.Awake == y.Awake &&
             x.CollisionShape == y.CollisionShape && 
-            x.Events.Count == y.Events.Count;
+            x.Events.Enumerate().SelectMany(x => x.Item2.Select(y => (((EventType)x.Item1).ToString(), (int)y.EventSubtype))).ToList().Count == y.Events.Enumerate().SelectMany(x => x.Item2.Select(y => (((EventType)x.Item1).ToString(), (int)y.EventSubtype))).ToList().Count;
     }
 
     // If Equals() returns true for a pair of objects
@@ -73,7 +73,7 @@ class UndertaleGameObjectComparer : IEqualityComparer<UndertaleGameObject>
             x.Persistent.GetHashCode() ^
             x.Awake.GetHashCode() ^
             x.CollisionShape.GetHashCode() ^
-            x.Events.Count.GetHashCode();
+            x.Events.Enumerate().SelectMany(x => x.Item2.Select(y => (((EventType)x.Item1).ToString(), (int)y.EventSubtype))).ToList().Count.GetHashCode();
     }
 }
 class UndertaleGameObjectNameComparer : IEqualityComparer<UndertaleGameObject>
@@ -348,6 +348,7 @@ static public class DiffUtils
 
         IEnumerable<UndertaleSprite> added = name.Sprites.Except(reference.Sprites, new UndertaleSpriteNameComparer());
         IEnumerable<UndertaleSprite> removed = reference.Sprites.Except(name.Sprites, new UndertaleSpriteNameComparer());
+        using StreamWriter swOrigin = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"addedSpritesOrigin.txt"));
         using (StreamWriter sw = new(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"addedSprites.txt")))
         {
             foreach(UndertaleSprite sprite in added)
@@ -360,6 +361,7 @@ static public class DiffUtils
                         worker.ExportAsPNG(sprite.Textures[i].Texture, Path.Combine(dirAddedSprite.FullName , sprite.Name.Content + "_" + i + ".png"), null, true);
                     }
                 }
+                swOrigin.WriteLine($"Msl.GetSprite(\"{sprite.Name.Content}\").OriginX = {sprite.OriginX};\nMsl.GetSprite(\"{sprite.Name.Content}\").OriginY = {sprite.OriginY};");
             }
         }
         File.WriteAllLines(Path.Join(outputFolder.FullName, Path.DirectorySeparatorChar.ToString(), $"removedSprites.txt"), removed.Select(x => x.Name.Content));

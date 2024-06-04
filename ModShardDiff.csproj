@@ -15,7 +15,7 @@
     <Authors>zizani</Authors>
     <PackageTags>msl;cli</PackageTags>
     <PackageProjectUrl>https://github.com/ModShardTeam/ModShardDiff</PackageProjectUrl>
-    <Description>A cli tool to export all differences between two .win files.</Description>
+    <Description>A cli tool to export differences between two .win files.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

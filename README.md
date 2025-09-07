@@ -1,6 +1,6 @@
 # ModShardDiff
 
-A cli tool to export differences between two .win files from the same GameMaker-based game. 
+A cli tool to export differences between two .win files from the same GameMaker-based game.
 
 > [!NOTE]  
 > This tool relies heavily on [UTMT](https://github.com/UnderminersTeam/UndertaleModTool).
@@ -8,6 +8,7 @@ A cli tool to export differences between two .win files from the same GameMaker-
 ## What will I get from this tool ?
 
 MSD will export in seperate files the following:
+
 - list of added and removed `Codes` in txt
 - list of added and removed `GameObjects` in txt
 - list of added and removed `Rooms` in txt
@@ -31,7 +32,7 @@ The diff for `Codes` and `GameObjects` is made using the `diff-match-patch` lib,
 
 ## How can I use it?
 
-#### Using the CLI:
+### Using the CLI
 
 To compare `data_modified.win` from `data_vanilla.win` and export the results in the folder `PATH/TO/EXPORT`, run `msd -n data_modified.win -r data_vanilla.win -o PATH/TO/EXPORT`.
 
